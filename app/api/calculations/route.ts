@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDB } from "@/lib/mongodb"
 import { COLLECTIONS, type CalculationDocument } from "@/lib/db-schemas"
-import { crypto } from "node:crypto"
+import crypto from "crypto"
 
 // GET all calculations
 export async function GET() {
@@ -9,7 +9,7 @@ export async function GET() {
     const db = await getDB()
     const calculations = await db
       .collection<CalculationDocument>(COLLECTIONS.CALCULATIONS)
-      .find({ parentId: null })
+      .find({})
       .sort({ timestamp: -1 })
       .toArray()
     return NextResponse.json(calculations)

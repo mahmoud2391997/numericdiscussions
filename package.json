@@ -11,7 +11,10 @@
   "dependencies": {
     "@aws-sdk/credential-providers": "latest",
     "@mongodb-js/zstd": "latest",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tailwindcss/postcss": "^4.1.17",
     "@vercel/analytics": "latest",
+    "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "gcp-metadata": "latest",
@@ -27,12 +30,15 @@
     "socks": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
-    "tw-animate-css": "latest"
+    "tw-animate-css": "latest",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^22",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
+    "@types/uuid": "^9.0.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "typescript": "^5"

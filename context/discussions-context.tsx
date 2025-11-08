@@ -1,17 +1,48 @@
-"use client"
+'use client'
 
-import type React from "react"
-import { createContext, useContext, useState, useEffect, useCallback } from "react"
-import { type User, type CalculationNodeData, OperationType } from "@/lib/types"
+import type React from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { type User, type CalculationNodeData, OperationType } from '@/lib/types'
+
+// Helper function to build the tree
+const buildCalculationTree = (nodes: CalculationNodeData[]): CalculationNodeData[] => {
+  const nodeMap = new Map<string, CalculationNodeData>()
+  const childNodes = new Map<string, CalculationNodeData[]>()
+
+  // First pass: create a map of all nodes
+  nodes.forEach(node => {
+    node.children = []
+    nodeMap.set(node.id, node)
+    if (node.parentId) {
+      if (!childNodes.has(node.parentId)) {
+        childNodes.set(node.parentId, [])
+      }
+      childNodes.get(node.parentId)!.push(node)
+    }
+  })
+
+  // Second pass: build the tree
+  const roots: CalculationNodeData[] = []
+  nodes.forEach(node => {
+    if (node.parentId === null) {
+      roots.push(node)
+    }
+    if (childNodes.has(node.id)) {
+      node.children = childNodes.get(node.id)!.sort((a, b) => a.timestamp - b.timestamp)
+    }
+  })
+
+  return roots.sort((a, b) => b.timestamp - a.timestamp)
+}
+
 
 interface DiscussionsContextType {
   users: Map<string, User>
   calculationTrees: CalculationNodeData[]
   currentUser: User | null
   loading: boolean
-  setCurrentUser: (user: User | null) => void
-  handleLogin: (username: string) => Promise<void>
-  handleRegister: (username: string) => Promise<void>
+  handleLogin: (username: string, password: string) => Promise<void>
+  handleRegister: (username: string, password: string) => Promise<void>
   handleLogout: () => void
   handleNewPost: (startNumber: number) => Promise<void>
   handleReply: (parentId: string, parentResult: number, operation: OperationType, operand: number) => Promise<void>
@@ -25,18 +56,42 @@ export function DiscussionsProvider({ children }: { children: React.ReactNode })
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const fetchCalculations = useCallback(async () => {
+    try {
+      const calcsResponse = await fetch('/api/calculations')
+      if (!calcsResponse.ok) {
+        throw new Error('Failed to fetch calculations')
+      }
+      const calcsData = await calcsResponse.json()
+      if (Array.isArray(calcsData)) {
+        const tree = buildCalculationTree(calcsData)
+        setCalculationTrees(tree)
+      } else {
+        console.error('[v0] Fetched calculations data is not an array:', calcsData)
+      }
+    } catch (error) {
+      console.error('[v0] Failed to fetch calculations:', error)
+    }
+  }, [])
+
+
   useEffect(() => {
     const fetchInitialData = async () => {
+      setLoading(true)
       try {
-        setLoading(true)
-        const usersResponse = await fetch("/api/users")
-        const usersData = await usersResponse.json()
-        const usersMap = new Map(usersData.map((u: User) => [u.id, u]))
-        setUsers(usersMap)
-
-        const calcsResponse = await fetch("/api/calculations")
-        const calcsData = await calcsResponse.json()
-        setCalculationTrees(calcsData)
+        await Promise.all([
+          (async () => {
+            const usersResponse = await fetch("/api/users")
+            if (!usersResponse.ok) throw new Error("Failed to fetch users")
+            const usersData = await usersResponse.json()
+            if (Array.isArray(usersData)) {
+              setUsers(new Map(usersData.map((u: User) => [u.id, u])))
+            } else {
+               console.error("[v0] Fetched users data is not an array:", usersData)
+            }
+          })(),
+          fetchCalculations(),
+        ])
       } catch (error) {
         console.error("[v0] Failed to fetch initial data:", error)
       } finally {
@@ -44,88 +99,79 @@ export function DiscussionsProvider({ children }: { children: React.ReactNode })
       }
     }
     fetchInitialData()
-  }, [])
+  }, [fetchCalculations])
 
-  const handleLogin = useCallback(async (username: string) => {
+  const handleLogin = useCallback(async (username: string, password: string) => {
+    setLoading(true)
     try {
-      setLoading(true)
-      const response = await fetch("/api/users")
-      const usersData = await response.json()
-      const user = usersData.find((u: User) => u.username.toLowerCase() === username.toLowerCase())
-      if (!user) {
-        alert("User not found. Please register first.")
-        return
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Login failed')
       }
-      setCurrentUser(user)
-    } catch (error) {
-      console.error("[v0] Login error:", error)
-      alert("Login failed")
+      const userData = await response.json()
+      setCurrentUser(userData)
     } finally {
       setLoading(false)
     }
   }, [])
 
-  const handleRegister = useCallback(
-    async (username: string) => {
-      try {
-        setLoading(true)
-        const response = await fetch("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username }),
-        })
-        if (!response.ok) {
-          const error = await response.json()
-          alert(error.error || "Registration failed")
-          return
-        }
-        const newUser = await response.json()
-        setUsers(new Map(users).set(newUser.id, newUser))
-        setCurrentUser(newUser)
-      } catch (error) {
-        console.error("[v0] Registration error:", error)
-        alert("Registration failed")
-      } finally {
-        setLoading(false)
+  const handleRegister = useCallback(async (username: string, password: string) => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Registration failed')
       }
-    },
-    [users],
-  )
+      const newUser = await response.json()
+      setUsers(prev => new Map(prev).set(newUser.id, newUser))
+      setCurrentUser(newUser)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   const handleLogout = () => {
     setCurrentUser(null)
   }
 
-  const handleNewPost = useCallback(
-    async (startNumber: number) => {
-      if (!currentUser) return
+  const handleNewPost = useCallback(async (startNumber: number) => {
+      if (!currentUser) throw new Error('You must be logged in to post.')
+      setLoading(true)
       try {
-        setLoading(true)
-        const response = await fetch("/api/calculations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const response = await fetch('/api/calculations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: currentUser.id,
             operand: startNumber,
             result: startNumber,
           }),
         })
-        if (!response.ok) throw new Error("Failed to create post")
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || 'Failed to create post')
+        }
         const newPost = await response.json()
-        setCalculationTrees([newPost, ...calculationTrees])
-      } catch (error) {
-        console.error("[v0] Failed to create post:", error)
-        alert("Failed to create post")
+        await fetchCalculations()
       } finally {
         setLoading(false)
       }
     },
-    [currentUser, calculationTrees],
+    [currentUser, fetchCalculations],
   )
 
-  const handleReply = useCallback(
-    async (parentId: string, parentResult: number, operation: OperationType, operand: number) => {
-      if (!currentUser) return
+  const handleReply = useCallback(async (parentId: string, parentResult: number, operation: OperationType, operand: number) => {
+      if (!currentUser) throw new Error('You must be logged in to reply.')
 
       let result: number
       switch (operation) {
@@ -139,17 +185,18 @@ export function DiscussionsProvider({ children }: { children: React.ReactNode })
           result = parentResult * operand
           break
         case OperationType.DIVIDE:
+          if (operand === 0) throw new Error('Cannot divide by zero.')
           result = parentResult / operand
           break
         default:
-          return
+            throw new Error('Invalid operation.')
       }
-
+      
+      setLoading(true)
       try {
-        setLoading(true)
-        const response = await fetch("/api/calculations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const response = await fetch('/api/calculations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: currentUser.id,
             parentId,
@@ -159,20 +206,16 @@ export function DiscussionsProvider({ children }: { children: React.ReactNode })
             result,
           }),
         })
-        if (!response.ok) throw new Error("Failed to create reply")
-
-        // Fetch updated tree to reflect changes
-        const calcsResponse = await fetch("/api/calculations")
-        const calcsData = await calcsResponse.json()
-        setCalculationTrees(calcsData)
-      } catch (error) {
-        console.error("[v0] Failed to create reply:", error)
-        alert("Failed to create reply")
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || 'Failed to create reply')
+        }
+        await fetchCalculations()
       } finally {
         setLoading(false)
       }
     },
-    [currentUser],
+    [currentUser, fetchCalculations],
   )
 
   const value: DiscussionsContextType = {
@@ -180,7 +223,6 @@ export function DiscussionsProvider({ children }: { children: React.ReactNode })
     calculationTrees,
     currentUser,
     loading,
-    setCurrentUser,
     handleLogin,
     handleRegister,
     handleLogout,
@@ -194,7 +236,7 @@ export function DiscussionsProvider({ children }: { children: React.ReactNode })
 export function useDiscussions() {
   const context = useContext(DiscussionsContext)
   if (context === undefined) {
-    throw new Error("useDiscussions must be used within DiscussionsProvider")
+    throw new Error('useDiscussions must be used within DiscussionsProvider')
   }
   return context
 }

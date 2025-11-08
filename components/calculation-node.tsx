@@ -1,45 +1,36 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import type { CalculationNodeData, User, OperationType } from "@/lib/types"
-import { ReplyForm } from "./reply-form"
-import { UserIcon } from "./icons"
+import { useState } from 'react'
+import type { CalculationNodeData } from '@/lib/types'
+import { ReplyForm } from './reply-form'
+import { UserIcon } from './icons'
+import { useDiscussions } from '@/context/discussions-context'
+import ErrorDisplay from './error-display'
 
-interface CalculationNodeProps {
-  node: CalculationNodeData
-  users: Map<string, User>
-  onReply: (parentId: string, parentResult: number, operation: OperationType, operand: number) => Promise<void>
-  currentUser: User | null
-  depth?: number
-  isLoading?: boolean
-}
+interface CalculationNodeProps extends CalculationNodeData {}
 
-export function CalculationNode({
-  node,
-  users,
-  onReply,
-  currentUser,
-  depth = 0,
-  isLoading = false,
-}: CalculationNodeProps) {
+const CalculationNode: React.FC<CalculationNodeProps> = (props) => {
+  const { id, userId, timestamp, parentId, parentResult, operation, operand, result, children } = props
+  const { users, handleReply, currentUser, loading } = useDiscussions()
   const [isReplying, setIsReplying] = useState(false)
-  const user = users.get(node.userId) || { username: "Unknown" }
+  const [error, setError] = useState<string | null>(null)
 
-  const handleReplySubmit = async (operation: OperationType, operand: number) => {
+  const user = users.get(userId) || { username: 'Unknown' }
+
+  const onReply = async (op: any, val: any) => {
+    setError(null)
     try {
-      await onReply(node.id, node.result, operation, operand)
+      await handleReply(id, result, op, val)
       setIsReplying(false)
-    } catch (error) {
-      console.error("[v0] Reply submission error:", error)
+    } catch (err: any) {
+      setError(err.message)
     }
   }
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString()
-  }
+  const formatDate = (ts: number) => new Date(ts).toLocaleString()
 
   return (
-    <div className={`mt-4 ${depth > 0 ? "ml-6 pl-6 border-l-2 border-gray-200 dark:border-gray-700" : ""}`}>
+    <div className="ml-6 pl-6 border-l-2 border-gray-200 dark:border-gray-700">
       <div className="flex items-start space-x-4">
         <div className="flex-shrink-0 text-center">
           <div className="w-12 h-12 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center text-gray-500 dark:text-gray-400">
@@ -48,24 +39,24 @@ export function CalculationNode({
           <span className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mt-1">{user.username}</span>
         </div>
         <div className="flex-grow">
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">{formatDate(node.timestamp)}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">{formatDate(timestamp)}</div>
           <div className="text-gray-800 dark:text-gray-200">
-            {node.parentId === null ? (
-              <p className="text-2xl font-bold">{node.result}</p>
+            {parentId === null ? (
+              <p className="text-2xl font-bold">{result}</p>
             ) : (
               <p className="text-lg">
-                <span className="text-gray-500 dark:text-gray-400">{node.parentResult}</span>
-                <span className="font-bold text-indigo-500 mx-2">{node.operation}</span>
-                <span className="text-gray-500 dark:text-gray-400">{node.operand}</span>
+                <span className="text-gray-500 dark:text-gray-400">{parentResult}</span>
+                <span className="font-bold text-indigo-500 mx-2">{operation}</span>
+                <span className="text-gray-500 dark:text-gray-400">{operand}</span>
                 <span className="font-bold mx-2">=</span>
-                <span className="font-bold text-2xl">{node.result}</span>
+                <span className="font-bold text-2xl">{result}</span>
               </p>
             )}
           </div>
           {currentUser && (
             <button
               onClick={() => setIsReplying(!isReplying)}
-              disabled={isLoading}
+              disabled={loading}
               className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Reply
@@ -75,23 +66,20 @@ export function CalculationNode({
       </div>
 
       {isReplying && (
-        <ReplyForm onSubmit={handleReplySubmit} onCancel={() => setIsReplying(false)} isLoading={isLoading} />
+        <div className="mt-4">
+          <ReplyForm onSubmit={onReply} onCancel={() => setIsReplying(false)} isLoading={loading} />
+          <ErrorDisplay message={error} />
+        </div>
       )}
 
-      <div className="children-container">
-        {node.children &&
-          node.children.map((child) => (
-            <CalculationNode
-              key={child.id}
-              node={child}
-              users={users}
-              onReply={onReply}
-              currentUser={currentUser}
-              depth={depth + 1}
-              isLoading={isLoading}
-            />
+      <div className="children-container mt-4">
+        {children &&
+          children.map((child: CalculationNodeData) => (
+            <CalculationNode key={child.id} {...child} />
           ))}
       </div>
     </div>
   )
 }
+
+export default CalculationNode
